@@ -41,6 +41,10 @@ docker run -d -p 8080:8080 pahud/gost-docker gost -logtostderr -v 4 -L=:8080 -F=
 
 // try with cURL
 curl -x 127.0.0.1:8080 https://myip.today
+
+// let aws-cli go via HTTPS_PROXY
+# alias the aws cmd or set in your ~/.bash_profile
+$ alias aws='HTTPS_PROXY=http://127.0.0.1:8080 /usr/local/bin/aws'
 ```
 
 
