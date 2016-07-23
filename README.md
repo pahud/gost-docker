@@ -1,6 +1,30 @@
 # gost-docker
 
-visit [ginuerzh/gost](https://github.com/ginuerzh/gost) for usage details
+**gost-docker** is a docker wrapping of [ginuerzh/gost](https://github.com/ginuerzh/gost) with the image size of only 15MB.  All you need to do is prepare a docker host and *docker run* on it.
+
+Visit  [ginuerzh/gost](https://github.com/ginuerzh/gost) for details.
+
+
+
+# Docker Installation
+
+You can install docker daemon with the following command:
+
+```
+curl -s https://get.docker.com | sh
+```
+
+and start docker daemon like this in CentOS or Amazon Linux
+
+```
+service docker start
+```
+
+or like this in ubuntu or debian Linux
+
+```
+/etc/init.d/docker start
+```
 
 
 
