@@ -13,5 +13,4 @@ mv /root/bin/gost /sbin/ && \
 rm -rf /root/src \
 && apk del .build-deps
 
-#RUN apk add --no-cache bash
 
