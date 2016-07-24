@@ -45,6 +45,40 @@ curl -x 127.0.0.1:8080 https://myip.today
 // let aws-cli go via HTTPS_PROXY
 # alias the aws cmd or set in your ~/.bash_profile
 $ alias aws='HTTPS_PROXY=http://127.0.0.1:8080 /usr/local/bin/aws'
+
+
 ```
 
 
+
+## docker pull via http_proxy in centos7
+
+add the following line in **[Service]** directive in ***/usr/lib/systemd/system/docker.service***
+
+```
+Environment='http_proxy=127.0.0.1:8080'
+```
+
+reload and make sure the config is active
+
+```
+# sudo systemctl daemon-reload
+# sudo systemctl show docker --property Environment
+Environment=http_proxy=127.0.0.1:8080
+```
+
+restart docker daemon
+
+```
+$ sudo service docker restart
+```
+
+(remember to start the gost-docker in server mode again, as restarting docker will stop all running docker containers)
+
+try docker pull again like this
+
+```
+docker pull ubuntu
+```
+
+and this should be working now.
