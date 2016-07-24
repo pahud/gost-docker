@@ -38,6 +38,8 @@ docker run -d -p 443:443  pahud/gost-docker gost -logtostderr -v 4 -L=ss://aes-1
 
 // shadowsocks client(running with --net=host is recommended)
 // please note this will share the networking interface with the host
+// and -L=:8080 will listen on *ALL* interfaces on this host, 
+// use -L=127.0.0.1:8080 if you want to listen on localhost only
 docker run -d -p 8080 --net=host pahud/gost-docker gost -logtostderr -v 4 -L=:8080 -F=ss://aes-128-cfb:123456@<server_ip>:443
 
 // try with cURL
