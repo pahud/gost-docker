@@ -28,7 +28,7 @@ or like this in ubuntu or debian Linux
 
 
 
-# examples
+# Examples
 
 create shadowsocks server and client
 
@@ -36,17 +36,22 @@ create shadowsocks server and client
 // shadowsocks server
 docker run -d -p 443:443  pahud/gost-docker gost -logtostderr -v 4 -L=ss://aes-128-cfb:123456@:443
 
-// shadowsocks client
-docker run -d -p 8080:8080 pahud/gost-docker gost -logtostderr -v 4 -L=:8080 -F=ss://aes-128-cfb:123456@<server_ip>:443
+// shadowsocks client(running with --net=host is recommended)
+// please note this will share the networking interface with the host
+docker run -d -p 8080 --net=host pahud/gost-docker gost -logtostderr -v 4 -L=:8080 -F=ss://aes-128-cfb:123456@<server_ip>:443
 
 // try with cURL
 curl -x 127.0.0.1:8080 https://myip.today
+```
 
+
+
+## aws-cli with https_proxy
+
+```
 // let aws-cli go via HTTPS_PROXY
 # alias the aws cmd or set in your ~/.bash_profile
 $ alias aws='HTTPS_PROXY=http://127.0.0.1:8080 /usr/local/bin/aws'
-
-
 ```
 
 
@@ -82,3 +87,5 @@ docker pull ubuntu
 ```
 
 and this should be working now.
+
+[Let me know](https://github.com/pahud/gost-docker/issues) if you have more working examples.
