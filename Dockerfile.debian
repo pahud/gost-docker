@@ -1,8 +1,10 @@
 FROM debian:jessie
 
-ENV GOST_VERSION="2.0-rc3"
+ENV GOST_VERSION="v2.2"
 
-ADD https://github.com/ginuerzh/gost/releases/download/2.0-rc3/gost_${GOST_VERSION}_linux_amd64.tar.gz /root/ 
+ADD https://github.com/ginuerzh/gost/releases/download/${GOST_VERSION}/gost_${GOST_VERSION}_linux_amd64.tar.gz /root/ 
+
+
 RUN \
 cd /root && \
 tar xzvf gost_${GOST_VERSION}_linux_amd64.tar.gz && \
