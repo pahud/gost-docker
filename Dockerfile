@@ -1,16 +1,10 @@
 FROM alpine:latest
+ENV GOST_VERSION="2.4"
 
-MAINTAINER Pahud Hsieh <pahudnet@gmail.com>
+ADD https://github.com/ginuerzh/gost/releases/download/v${GOST_VERSION}/gost_${GOST_VERSION}_linux_386.tar.gz /root/
 
 RUN \
-apk add --no-cache --virtual .build-deps \
-build-base git go bash && \
-cd /root && mkdir src bin && cd src && \
-git clone https://github.com/ginuerzh/gost && \
-cd gost && \
-GOPATH=/root go get ./... && \
-mv /root/bin/gost /sbin/ && \
-rm -rf /root/src \
-&& apk del .build-deps
-
-
+cd /root && \
+tar xzvf gost_${GOST_VERSION}_linux_386.tar.gz && \
+cp /root/gost_${GOST_VERSION}_linux_386/gost /bin/ && \
+chmod +x /bin/gost
