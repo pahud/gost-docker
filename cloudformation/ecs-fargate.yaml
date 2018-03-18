@@ -528,14 +528,14 @@ Outputs:
   #   Export:
   #     Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ClusterName' ] ]
   SSHostName:
-    Description: The DNS Name of ALB
+    Description: The DNS Name of NLB for SS Service
     Value: !Sub "${PublicLoadBalancer.DNSName}"
   SSPort:
     Description: The port SS
     Value: '443'
   SSPassword:
-    Description: The password of SS Server
+    Description: The password of SS Service
     Value: !Ref SSPassword
   SSEncryptionType:
-    Description: Encryption Type of SS Server
+    Description: Encryption Type of SS Service
     Value: !Ref SSEncryptionType
