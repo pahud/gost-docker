@@ -1,0 +1,473 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a service on AWS Fargate, hosted in a public subnet, and accessible via a public load balancer.
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Network Configuration"
+        Parameters: 
+          - VpcId
+          - ExistingPublicSubnetOne
+          - ExistingPublicSubnetTwo
+      - 
+        Label: 
+          default: "Amazon ECS Configuration"
+        Parameters: 
+          - ServiceName
+          - ImageUrl
+          - ContainerPort
+          - ContainerCpu
+          - ContainerMemory
+          - DesiredCount
+          - Role
+      # - 
+        # Label: 
+        #   default: "VPN Configuration"
+        # Parameters: 
+        #   - SSPassword
+        #   - SSEncryptionType
+    # ParameterLabels: 
+    #   VPCID: 
+    #     default: "Which VPC should this be deployed to?"
+
+Mappings:
+  # Hard values for the subnet masks. These masks define
+  # the range of internal IP addresses that can be assigned.
+  # The VPC can have all IP's from 10.0.0.0 to 10.0.255.255
+  # There are two subnets which cover the ranges:
+  #
+  # 10.0.0.0 - 10.0.0.255
+  # 10.0.1.0 - 10.0.1.255
+  #
+  # If you need more IP addresses (perhaps you have so many
+  # instances that you run out) then you can customize these
+  # ranges to add more
+  SubnetConfig:
+    VPC:
+      CIDR: '10.0.0.0/16'
+    PublicOne:
+      CIDR: '10.0.100.0/24'
+    PublicTwo:
+      CIDR: '10.0.101.0/24'
+
+Parameters:
+  # StackName:
+  #   Type: String
+  #   Default: production
+  #   Description: The name of the parent Fargate networking stack that you created. Necessary
+  #                to locate and reference resources created by that stack.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: ""
+    Description: Launch in existing VPC
+
+  ExistingPublicSubnetOne:
+    Type: AWS::EC2::Subnet::Id
+    Default: ""
+    Description: existing public subnet one
+
+  ExistingPublicSubnetTwo:
+    Type: AWS::EC2::Subnet::Id
+    Default: ""
+    Description: existing public subnet two
+
+  ServiceName:
+    Type: String
+    Default: gost
+    Description: A name for the service
+  ImageUrl:
+    Type: String
+    Default: ginuerzh/gost
+    Description: The url of a docker image that contains the application process that
+                 will handle the traffic for this service
+  ContainerPort:
+    Type: Number
+    Default: 443
+    Description: What port number the application inside the docker container is binding to
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: How much CPU to give the container. 1024 is 1 CPU
+  ContainerMemory:
+    Type: Number
+    Default: 512
+    Description: How much memory in megabytes to give the container
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: How many copies of the service task to run
+  SecurityGroupCidr:
+    Type: String
+    Description: Cidr range for the ingress to the service(You should change this value set the public IP of the gost client)
+    Default: 0.0.0.0/0
+  Role:
+    Type: String
+    Default: ""
+    Description: (Optional) An IAM role to give the service's containers if the code within needs to
+                 access other AWS resources like S3 buckets, DynamoDB tables, etc
+
+
+Conditions:
+  HasCustomRole: !Not [ !Equals [!Ref 'Role', ''] ]
+  CreateVPC:  !Equals [!Ref 'VpcId', '']
+
+
+Resources:
+  # VPC in which containers will be networked.
+  # It has two public subnets
+  # We distribute the subnets across the first two available subnets
+  # for the region, for high availability.
+  VPC:
+    Condition: CreateVPC
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap ['SubnetConfig', 'VPC', 'CIDR']
+
+  # Two public subnets, where containers can have public IP addresses
+  PublicSubnetOne:
+    Condition: CreateVPC
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+         Fn::Select:
+         - 0
+         - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+      CidrBlock: !FindInMap ['SubnetConfig', 'PublicOne', 'CIDR']
+      MapPublicIpOnLaunch: true
+  PublicSubnetTwo:
+    Condition: CreateVPC
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+         Fn::Select:
+         - 1
+         - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+      CidrBlock: !FindInMap ['SubnetConfig', 'PublicTwo', 'CIDR']
+      MapPublicIpOnLaunch: true
+
+  # Setup networking resources for the public subnets. Containers
+  # in the public subnets have public IP addresses and the routing table
+  # sends network traffic via the internet gateway.
+  InternetGateway:
+    Condition: CreateVPC
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachement:
+    Condition: CreateVPC
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+      InternetGatewayId: !Ref 'InternetGateway'
+  PublicRouteTable:
+    Condition: CreateVPC
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+  PublicRoute:
+    Condition: CreateVPC
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachement
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+  PublicSubnetOneRouteTableAssociation:
+    Condition: CreateVPC
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetTwoRouteTableAssociation:
+    Condition: CreateVPC
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetTwo
+      RouteTableId: !Ref PublicRouteTable
+
+  # ECS Resources
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+
+  # A security group for the containers we will run in Fargate.
+  # Two rules, allowing network traffic from a public facing load
+  # balancer and from other members of the security group.
+  #
+  # Remove any of the following ingress rules that are not needed.
+  # If you want to make direct requests to a container using its
+  # public IP address you'll need to add a security group rule
+  # to allow traffic from all IP addresses.
+  FargateContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access to the Fargate containers
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+  EcsSecurityGroupIngressFromPublicNLB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from the public through NLB
+      GroupId: !Ref 'FargateContainerSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '443'
+      ToPort: '443'
+      CidrIp: !Ref SecurityGroupCidr
+  EcsSecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from other containers in the same security group
+      GroupId: !Ref 'FargateContainerSecurityGroup'
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref 'FargateContainerSecurityGroup'
+
+  PublicLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: network
+      Scheme: internet-facing
+      # LoadBalancerAttributes:
+      # - Key: idle_timeout.timeout_seconds
+      #   Value: '30'
+      Subnets:
+        !If
+          - CreateVPC
+          - 
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+          -
+            - !Ref ExistingPublicSubnetOne
+            - !Ref ExistingPublicSubnetTwo
+            
+
+        # The load balancer is placed into the public subnets, so that traffic
+        # from the internet can reach the load balancer directly via the internet gateway
+        # - !Ref PublicSubnetOne
+        # - !Ref PublicSubnetTwo
+      # SecurityGroups: [!Ref 'PublicLoadBalancerSG']
+  # A dummy target group is used to setup the ALB to just drop traffic
+  # initially, before any real service target groups have been added.
+  DummyTargetGroupPublic:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      # HealthCheckPath: /
+      HealthCheckProtocol: TCP
+      # HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: !Join ['-', [!Ref 'AWS::StackName', 'drop-1']]
+      Port: 443
+      Protocol: TCP
+      UnhealthyThresholdCount: 2
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+  PublicLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:
+      - PublicLoadBalancer
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref 'TargetGroup'
+          Type: 'forward'
+      LoadBalancerArn: !Ref 'PublicLoadBalancer'
+      Port: 443
+      Protocol: TCP
+
+  # This is an IAM role which authorizes ECS to manage resources on your
+  # account on your behalf, such as updating your load balancer with the
+  # details of where your containers are, so that traffic can reach your
+  # containers.
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Rules which allow ECS to attach network interfaces to instances
+              # on your behalf in order for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules which allow ECS to update load balancers on your behalf
+              # with the information sabout how to send traffic to your containers
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+            Resource: '*'
+
+  # This is a role which is used by the ECS tasks themselves.
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                # Allow the ECS Tasks to download images from ECR
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+
+                # Allow the ECS tasks to upload logs to CloudWatch
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'
+
+###### Service Resources: ########
+
+  # The task definition. This is a simple metadata description of what
+  # container to run, and what resource requirements it has.
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref 'ServiceName'
+      Cpu: !Ref 'ContainerCpu'
+      Memory: !Ref 'ContainerMemory'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+        # Fn::ImportValue:
+        #   !Join [':', [!Ref 'StackName', 'ECSTaskExecutionRole']]
+      TaskRoleArn:
+        Fn::If:
+          - 'HasCustomRole'
+          - !Ref 'Role'
+          - !Ref "AWS::NoValue"
+      ContainerDefinitions:
+        - Name: !Ref 'ServiceName'
+          Cpu: !Ref 'ContainerCpu'
+          Memory: !Ref 'ContainerMemory'
+          Image: !Ref 'ImageUrl'
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+          Command:
+            - -D
+            - -L
+            - !Sub "https://:${ContainerPort}"
+
+  # The service. The service is a resource which allows you to run multiple
+  # copies of a type of task, and gather up their logs and metrics, as well
+  # as monitor the number of running tasks and replace any that have crashed
+  Service:
+    Type: AWS::ECS::Service
+    # DependsOn: LoadBalancerRule
+    DependsOn: PublicLoadBalancerListener
+    Properties:
+      ServiceName: !Ref 'ServiceName'
+      Cluster: !Ref 'ECSCluster'
+        # Fn::ImportValue:
+        #   !Join [':', [!Ref 'StackName', 'ClusterName']]
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      DesiredCount: !Ref 'DesiredCount'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: 
+            - !Ref 'FargateContainerSecurityGroup'
+            # - Fn::ImportValue:
+            #     !Join [':', [!Ref 'StackName', 'FargateContainerSecurityGroup']]
+          Subnets:
+            !If
+              - CreateVPC
+              - 
+                - !Ref PublicSubnetOne
+                - !Ref PublicSubnetTwo
+              -
+                - !Ref ExistingPublicSubnetOne
+                - !Ref ExistingPublicSubnetTwo
+            # - Fn::ImportValue:
+            #     !Join [':', [!Ref 'StackName', 'PublicSubnetOne']]
+            # - Fn::ImportValue:
+            #     !Join [':', [!Ref 'StackName', 'PublicSubnetTwo']]
+      TaskDefinition: !Ref 'TaskDefinition'
+      LoadBalancers:
+        - ContainerName: !Ref 'ServiceName'
+          ContainerPort: !Ref 'ContainerPort'
+          TargetGroupArn: !Ref 'TargetGroup'
+
+  # A target group. This is used for keeping track of all the tasks, and
+  # what IP addresses / port numbers they have. You can query it yourself,
+  # to use the addresses yourself, but most often this target group is just
+  # connected to an application load balancer, or network load balancer, so
+  # it can automatically distribute traffic across all the targets.
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      # HealthCheckPath: /
+      HealthCheckProtocol: TCP
+      # HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      TargetType: ip
+      Name: !Sub "${ServiceName}-${AWS::StackName}"
+      Port: 443
+      Protocol: TCP
+      UnhealthyThresholdCount: 2
+      VpcId: 
+        !If 
+          - CreateVPC
+          - !Ref 'VPC'
+          - !Ref 'VpcId'
+
+Outputs:
+  NLBHostName:
+    Description: The DNS Name of NLB for the Service
+    Value: !Sub "${PublicLoadBalancer.DNSName}"
+  GostClientCommand:
+    Description: gost client command to bridge this endpoint
+    Value: !Sub "gost -D -L http://:8443  -F https://${PublicLoadBalancer.DNSName}:${ContainerPort}"
