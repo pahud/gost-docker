@@ -34,13 +34,13 @@ create shadowsocks server and client
 
 ```
 // shadowsocks server
-docker run -d -p 443:443  pahud/gost-docker gost -logtostderr -v 4 -L=ss://aes-256-cfb:123456@:443
+docker run -d -p 443:443  pahud/gost-docker gost -D -L=ss://chacha20:123456@:443
 
 // shadowsocks client(running with --net=host is recommended)
 // please note this will share the networking interface with the host
 // and -L=:8080 will listen on *ALL* interfaces on this host, 
 // use -L=127.0.0.1:8080 if you want to listen on localhost only
-docker run -d -p 8080 --net=host pahud/gost-docker gost -logtostderr -v 4 -L=:8080 -F=ss://aes-256-cfb:123456@<server_ip>:443
+docker run -d -p 8080 --net=host pahud/gost-docker gost -D -L=:8080 -F=ss://chacha20:123456@<server_ip>:443
 
 // try with cURL
 curl -x 127.0.0.1:8080 https://myip.today
@@ -51,7 +51,7 @@ curl -x 127.0.0.1:8080 https://myip.today
 create http_proxy on loalhost of Mac OS X, tunneling to remote shadowsocks server and make it always restart unless stopped manually.
 
 ```
-docker run --restart=unless-stopped -d -p 8080:8080 pahud/gost-docker gost -logtostderr -v 4 -L=:8080 -F=ss://aes-256-cfb:<password>@<ss_host>:<ss_port>
+docker run --restart=unless-stopped -d -p 8080:8080 pahud/gost-docker gost -D -L=:8080 -F=ss://chacha20:<password>@<ss_host>:<ss_port>
 ```
 
 
